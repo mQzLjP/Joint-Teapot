@@ -201,16 +201,17 @@ def generate_title_and_comment(
             for result in stage["results"]
         ):
             continue
-        comment += f"## {stage['name']}"
+        stage_score = sum(result["score"] for result in stage["results"])
+        comment += f"## {stage['name']} - Score: {stage_score}"
         force_quit = stage["force_quit"]
         if force_quit:
-            comment += " - Failed"
+            comment += " - Fatal Error"
         comment += "\n"
         for i, result in enumerate(stage["results"]):
-            comment += "<details>"
+            comment += "<details>\n"
             comment += f"<summary>Case {i} - Score: {result['score']}</summary>\n"
             if result["comment"].strip() != "":
-                comment += f"\n{result['comment']}\n"
+                comment += f"\n{result['comment']}\n\n"
             comment += "</details>\n\n"
             total_score += result["score"]
         comment += "\n"
