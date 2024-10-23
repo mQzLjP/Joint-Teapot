@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
+from filelock import FileLock
 from git import Repo
 from typer import Argument, Option, Typer, echo
 
@@ -239,39 +240,55 @@ def joj3_scoreboard(
         "unknown",
         help="name of the exercise that appears on the issue title",
     ),
+    commit_hash: str = Argument(
+        "",
+        help="commit hash that triggers gitea actions",
+    ),
 ) -> None:
     set_settings(Settings(_env_file=env_path))
     set_logger(settings.stderr_log_level, diagnose=False, backtrace=False)
     logger.info(f"debug log to file: {settings.log_file_path}")
     if joj3.check_skipped(score_file_path, "skip-scoreboard"):
         return
-    repo_path = tea.pot.git.repo_clean_and_checkout(repo_name, "grading")
-    repo: Repo = tea.pot.git.get_repo(repo_name)
-    if "grading" not in repo.remote().refs:
-        logger.error(
-            '"grading" branch not found in remote, create and push it to origin first.'
+    tea.pot.git  # trigger lazy load
+    lock_file_path = os.path.join(
+        settings.repos_dir, repo_name, settings.joj3_lock_file_path
+    )
+    logger.info(
+        f"try to acquire lock, file path: {lock_file_path}, "
+        + f"timeout: {settings.joj3_lock_file_timeout}"
+    )
+    with FileLock(lock_file_path, timeout=settings.joj3_lock_file_timeout).acquire():
+        logger.info("file lock acquired")
+        repo_path = tea.pot.git.repo_clean_and_checkout(repo_name, "grading")
+        repo: Repo = tea.pot.git.get_repo(repo_name)
+        if "grading" not in repo.remote().refs:
+            logger.error(
+                '"grading" branch not found in remote, create and push it to origin first.'
+            )
+            return
+        if "grading" not in repo.branches:
+            logger.error('"grading" branch not found in local, create it first.')
+            return
+        repo.git.reset("--hard", "origin/grading")
+        joj3.generate_scoreboard(
+            score_file_path,
+            submitter,
+            os.path.join(repo_path, scoreboard_file_name),
+            exercise_name,
         )
-        return
-    if "grading" not in repo.branches:
-        logger.error('"grading" branch not found in local, create it first.')
-        return
-    repo.git.reset("--hard", "origin/grading")
-    joj3.generate_scoreboard(
-        score_file_path,
-        submitter,
-        os.path.join(repo_path, scoreboard_file_name),
-        exercise_name,
-    )
-    actions_link = (
-        f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
-        + f"{settings.gitea_org_name}/{submitter_repo_name}/"
-        + f"actions/runs/{run_number}"
-    )
-    commit_message = (
-        f"joj3: update scoreboard by {submitter} in {submitter_repo_name}\n\n"
-        + f"gitea actions link: {actions_link}"
-    )
-    tea.pot.git.add_commit_and_push(repo_name, [scoreboard_file_name], commit_message)
+        actions_link = (
+            f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
+            + f"{settings.gitea_org_name}/{submitter_repo_name}/"
+            + f"actions/runs/{run_number}"
+        )
+        commit_message = (
+            f"joj3: update scoreboard by @{submitter} in "
+            + f"{settings.gitea_org_name}/{submitter_repo_name}@{commit_hash}\n\n"
+            + f"gitea actions link: {actions_link}"
+        )
+        tea.pot.git.add_commit(repo_name, [scoreboard_file_name], commit_message)
+        tea.pot.git.push(repo_name)
 
 
 @app.command(
@@ -303,48 +320,60 @@ def joj3_failed_table(
         "unknown",
         help="name of the exercise that appears on the issue title",
     ),
+    commit_hash: str = Argument(
+        "",
+        help="commit hash that triggers gitea actions",
+    ),
 ) -> None:
     set_settings(Settings(_env_file=env_path))
     set_logger(settings.stderr_log_level, diagnose=False, backtrace=False)
     logger.info(f"debug log to file: {settings.log_file_path}")
     if joj3.check_skipped(score_file_path, "skip-failed-table"):
         return
-    repo_path = tea.pot.git.repo_clean_and_checkout(repo_name, "grading")
-    repo: Repo = tea.pot.git.get_repo(repo_name)
-    if "grading" not in repo.remote().refs:
-        logger.error(
-            '"grading" branch not found in remote, create and push it to origin first.'
+    tea.pot.git  # trigger lazy load
+    lock_file_path = os.path.join(
+        settings.repos_dir, repo_name, settings.joj3_lock_file_path
+    )
+    logger.info(
+        f"try to acquire lock, file path: {lock_file_path}, "
+        + f"timeout: {settings.joj3_lock_file_timeout}"
+    )
+    with FileLock(lock_file_path, timeout=settings.joj3_lock_file_timeout).acquire():
+        logger.info("file lock acquired")
+        repo_path = tea.pot.git.repo_clean_and_checkout(repo_name, "grading")
+        repo: Repo = tea.pot.git.get_repo(repo_name)
+        if "grading" not in repo.remote().refs:
+            logger.error(
+                '"grading" branch not found in remote, create and push it to origin first.'
+            )
+            return
+        if "grading" not in repo.branches:
+            logger.error('"grading" branch not found in local, create it first.')
+            return
+        repo.git.reset("--hard", "origin/grading")
+        submitter_repo_link = (
+            f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
+            + f"{settings.gitea_org_name}/{submitter_repo_name}"
         )
-        return
-    if "grading" not in repo.branches:
-        logger.error('"grading" branch not found in local, create it first.')
-        return
-    repo.git.reset("--hard", "origin/grading")
-    submitter_repo_link = (
-        f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
-        + f"{settings.gitea_org_name}/{submitter_repo_name}"
-    )
-    actions_link = (
-        f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
-        + f"{settings.gitea_org_name}/{submitter_repo_name}/"
-        + f"actions/runs/{run_number}"
-    )
-    joj3.generate_failed_table(
-        score_file_path,
-        submitter_repo_name,
-        submitter_repo_link,
-        os.path.join(repo_path, failed_table_file_name),
-        actions_link,
-    )
-    commit_message = (
-        f"joj3: update failed table by {submitter} in {submitter_repo_name}\n\n"
-        + f"gitea actions link: {actions_link}"
-    )
-    tea.pot.git.add_commit_and_push(
-        repo_name,
-        [failed_table_file_name],
-        commit_message,
-    )
+        actions_link = (
+            f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
+            + f"{settings.gitea_org_name}/{submitter_repo_name}/"
+            + f"actions/runs/{run_number}"
+        )
+        joj3.generate_failed_table(
+            score_file_path,
+            submitter_repo_name,
+            submitter_repo_link,
+            os.path.join(repo_path, failed_table_file_name),
+            actions_link,
+        )
+        commit_message = (
+            f"joj3: update failed table by @{submitter} in "
+            + f"{settings.gitea_org_name}/{submitter_repo_name}@{commit_hash}\n\n"
+            + f"gitea actions link: {actions_link}"
+        )
+        tea.pot.git.add_commit(repo_name, [failed_table_file_name], commit_message)
+        tea.pot.git.push(repo_name)
 
 
 @app.command(
@@ -368,6 +397,11 @@ def joj3_create_result_issue(
         "unknown",
         help="name of the exercise that appears on the issue title",
     ),
+    submitter: str = Argument("", help="submitter ID"),
+    commit_hash: str = Argument(
+        "",
+        help="commit hash that triggers gitea actions",
+    ),
 ) -> None:
     set_settings(Settings(_env_file=env_path))
     set_logger(settings.stderr_log_level, diagnose=False, backtrace=False)
@@ -380,9 +414,144 @@ def joj3_create_result_issue(
         + f"actions/runs/{run_number}"
     )
     title, comment = joj3.generate_title_and_comment(
-        score_file_path, actions_link, run_number, exercise_name
+        score_file_path,
+        actions_link,
+        run_number,
+        exercise_name,
+        submitter,
+        commit_hash,
     )
     tea.pot.gitea.create_issue(submitter_repo_name, title, comment, False)
+
+
+@app.command(
+    "joj3-all",
+    help="run all joj3 tasks",
+)
+def joj3_all(
+    env_path: str = Argument("", help="path to .env file"),
+    score_file_path: str = Argument(
+        "", help="path to score json file generated by JOJ3"
+    ),
+    submitter: str = Argument("", help="submitter ID"),
+    repo_name: str = Argument(
+        "",
+        help="name of grading repo to push failed table file",
+    ),
+    submitter_repo_name: str = Argument(
+        "",
+        help="repository's name of the submitter",
+    ),
+    run_number: str = Argument(
+        "",
+        help="gitea actions run number",
+    ),
+    scoreboard_file_name: str = Argument(
+        "scoreboard.csv", help="name of scoreboard file in the gitea repo"
+    ),
+    failed_table_file_name: str = Argument(
+        "failed-table.md", help="name of failed table file in the gitea repo"
+    ),
+    exercise_name: str = Argument(
+        "unknown",
+        help="name of the exercise that appears on the issue title",
+    ),
+    commit_hash: str = Argument(
+        "",
+        help="commit hash that triggers gitea actions",
+    ),
+    skip_result_issue: bool = Option(
+        False,
+        help="skip creating result issue on gitea",
+    ),
+    skip_scoreboard: bool = Option(
+        False,
+        help="skip creating scoreboard on gitea",
+    ),
+    skip_failed_table: bool = Option(
+        False,
+        help="skip creating failed table on gitea",
+    ),
+) -> None:
+    set_settings(Settings(_env_file=env_path))
+    set_logger(settings.stderr_log_level, diagnose=False, backtrace=False)
+    logger.info(f"debug log to file: {settings.log_file_path}")
+    actions_link = (
+        f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
+        + f"{settings.gitea_org_name}/{submitter_repo_name}/"
+        + f"actions/runs/{run_number}"
+    )
+    submitter_repo_link = (
+        f"https://{settings.gitea_domain_name}{settings.gitea_suffix}/"
+        + f"{settings.gitea_org_name}/{submitter_repo_name}"
+    )
+    if not skip_result_issue:
+        title, comment = joj3.generate_title_and_comment(
+            score_file_path,
+            actions_link,
+            run_number,
+            exercise_name,
+            submitter,
+            commit_hash,
+        )
+        tea.pot.gitea.create_issue(submitter_repo_name, title, comment, False)
+    if skip_scoreboard and skip_failed_table:
+        return
+    tea.pot.git  # trigger lazy load
+    lock_file_path = os.path.join(
+        settings.repos_dir, repo_name, settings.joj3_lock_file_path
+    )
+    logger.info(
+        f"try to acquire lock, file path: {lock_file_path}, "
+        + f"timeout: {settings.joj3_lock_file_timeout}"
+    )
+    with FileLock(lock_file_path, timeout=settings.joj3_lock_file_timeout).acquire():
+        logger.info("file lock acquired")
+        repo_path = tea.pot.git.repo_clean_and_checkout(repo_name, "grading")
+        repo: Repo = tea.pot.git.get_repo(repo_name)
+        if "grading" not in repo.remote().refs:
+            logger.error(
+                '"grading" branch not found in remote, create and push it to origin first.'
+            )
+            return
+        if "grading" not in repo.branches:
+            logger.error('"grading" branch not found in local, create it first.')
+            return
+        repo.git.reset("--hard", "origin/grading")
+        if not skip_scoreboard:
+            joj3.generate_scoreboard(
+                score_file_path,
+                submitter,
+                os.path.join(repo_path, scoreboard_file_name),
+                exercise_name,
+            )
+            tea.pot.git.add_commit(
+                repo_name,
+                [scoreboard_file_name],
+                (
+                    f"joj3: update scoreboard by @{submitter} in "
+                    + f"{settings.gitea_org_name}/{submitter_repo_name}@{commit_hash}\n\n"
+                    + f"gitea actions link: {actions_link}"
+                ),
+            )
+        if not skip_failed_table:
+            joj3.generate_failed_table(
+                score_file_path,
+                submitter_repo_name,
+                submitter_repo_link,
+                os.path.join(repo_path, failed_table_file_name),
+                actions_link,
+            )
+            tea.pot.git.add_commit(
+                repo_name,
+                [failed_table_file_name],
+                (
+                    f"joj3: update failed table by @{submitter} in "
+                    + f"{settings.gitea_org_name}/{submitter_repo_name}@{commit_hash}\n\n"
+                    + f"gitea actions link: {actions_link}"
+                ),
+            )
+        tea.pot.git.push(repo_name)
 
 
 if __name__ == "__main__":

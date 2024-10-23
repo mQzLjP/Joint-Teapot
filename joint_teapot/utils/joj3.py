@@ -16,7 +16,7 @@ def generate_scoreboard(
             f"Scoreboard file should be a .csv file, but now it is {scoreboard_file_path}"
         )
         return
-
+    os.makedirs(os.path.dirname(scoreboard_file_path), exist_ok=True)
     # Load the csv file if it already exists
     if os.path.exists(scoreboard_file_path):
         with open(scoreboard_file_path, newline="") as file:
@@ -150,6 +150,7 @@ def write_failed_table_into_file(data: List[List[str]], table_file_path: str) ->
     for row in data:
         text += f"|{row[0]}|{row[1]}|{row[2]}|\n"
 
+    os.makedirs(os.path.dirname(table_file_path), exist_ok=True)
     with open(table_file_path, "w") as table_file:
         table_file.write(text)
 
@@ -179,7 +180,12 @@ def generate_failed_table(
 
 
 def generate_title_and_comment(
-    score_file_path: str, action_link: str, run_number: str, exercise_name: str
+    score_file_path: str,
+    action_link: str,
+    run_number: str,
+    exercise_name: str,
+    submitter: str,
+    commit_hash: str,
 ) -> Tuple[str, str]:
     with open(score_file_path) as json_file:
         stages: List[Dict[str, Any]] = json.load(json_file)
@@ -191,7 +197,9 @@ def generate_title_and_comment(
             exercise_name = comment.split("-")[0]
     total_score = 0
     comment = (
-        f"Generated from [Gitea Actions #{run_number}]({action_link}). "
+        f"Generated from [Gitea Actions #{run_number}]({action_link}), "
+        + f"commit {commit_hash}, "
+        + f"triggered by @{submitter}.\n"
         + "Powered by [JOJ3](https://github.com/joint-online-judge/JOJ3) and "
         + "[Joint-Teapot](https://github.com/BoYanZh/Joint-Teapot) with ❤️.\n"
     )
