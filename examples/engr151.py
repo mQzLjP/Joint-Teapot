@@ -1,7 +1,7 @@
+import argparse
 import re
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
 
-from joint_teapot import Teapot, logger
+from joint_teapot import Teapot
 
 
 class ENGR151Teapot(Teapot):
@@ -18,5 +18,21 @@ class ENGR151Teapot(Teapot):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ENGR151 Teapot Utility")
+    subparsers = parser.add_subparsers(dest="command")
+
+    archive_parser = subparsers.add_parser(
+        "archive-repos", help="Archive repositories matching a regex pattern."
+    )
+    archive_parser.add_argument(
+        "regex", type=str, help="The regex pattern to match repository names."
+    )
+
+    args = parser.parse_args()
+
     teapot = ENGR151Teapot()
-    teapot.archive_repos(".*-p1")
+
+    if args.command == "archive-repos":
+        teapot.archive_repos(args.regex)
+    else:
+        parser.print_help()
