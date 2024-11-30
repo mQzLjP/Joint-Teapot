@@ -9,7 +9,10 @@ from joint_teapot.utils.logger import logger
 
 
 def generate_scoreboard(
-    score_file_path: str, submitter: str, scoreboard_file_path: str, exercise_name: str
+    score_file_path: str,
+    submitter: str,
+    scoreboard_file_path: str,
+    exercise_name: str,
 ) -> None:
     if not scoreboard_file_path.endswith(".csv"):
         logger.error(
@@ -69,6 +72,7 @@ def generate_scoreboard(
     for stage in stages:
         for result in stage["results"]:
             exercise_total_score += result["score"]
+    exercise_total_score = exercise_total_score
     submitter_row[columns.index(exercise_name)] = str(exercise_total_score)
 
     total = 0
@@ -82,9 +86,8 @@ def generate_scoreboard(
     submitter_row[columns.index("total")] = str(total)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    submitter_row[
-        columns.index("last_edit")
-    ] = now  # FIXME: Delete this in formal version
+    # FIXME: Delete this in formal version
+    submitter_row[columns.index("last_edit")] = now
 
     # Sort data by total, from low to high
     data.sort(key=lambda x: int(x[columns.index("total")]))
@@ -186,6 +189,9 @@ def generate_title_and_comment(
     exercise_name: str,
     submitter: str,
     commit_hash: str,
+    submitter_in_title: bool = True,
+    run_id: str = "unknown",
+    max_total_score: int = -1,
 ) -> Tuple[str, str]:
     with open(score_file_path) as json_file:
         stages: List[Dict[str, Any]] = json.load(json_file)
@@ -196,12 +202,14 @@ def generate_title_and_comment(
             comment = stage["results"][0]["comment"]
             exercise_name = comment.split("-")[0]
     total_score = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     comment = (
-        f"Generated from [Gitea Actions #{run_number}]({action_link}), "
-        + f"commit {commit_hash}, "
-        + f"triggered by @{submitter}.\n"
-        + "Powered by [JOJ3](https://github.com/joint-online-judge/JOJ3) and "
-        + "[Joint-Teapot](https://github.com/BoYanZh/Joint-Teapot) with ❤️.\n"
+        f"Generated at {now} from [Gitea Actions #{run_number}]({action_link}), "
+        f"commit {commit_hash}, "
+        f"triggered by @{submitter}, "
+        f"run ID `{run_id}`.\n"
+        "Powered by [JOJ3](https://github.com/joint-online-judge/JOJ3) and "
+        "[Joint-Teapot](https://github.com/BoYanZh/Joint-Teapot) with ❤️.\n"
     )
     for stage in stages:
         if all(
@@ -222,7 +230,11 @@ def generate_title_and_comment(
             comment += "</details>\n\n"
             total_score += result["score"]
         comment += "\n"
-    title = f"JOJ3 Result for {exercise_name} - Score: {total_score}"
+    title = get_title_prefix(exercise_name, submitter, submitter_in_title)
+    if max_total_score >= 0:
+        title += f"{total_score} / {max_total_score}"
+    else:
+        title += f"{total_score}"
     return title, comment
 
 
@@ -236,3 +248,12 @@ def check_skipped(score_file_path: str, keyword: str) -> bool:
         if keyword in comment or "skip-teapot" in comment:
             return True
     return False
+
+
+def get_title_prefix(
+    exercise_name: str, submitter: str, submitter_in_title: bool
+) -> str:
+    title = f"JOJ3 Result for {exercise_name} by @{submitter} - Score: "
+    if not submitter_in_title:
+        title = f"JOJ3 Result for {exercise_name} - Score: "
+    return title

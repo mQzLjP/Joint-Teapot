@@ -9,6 +9,7 @@ current_path = sys.path[0]
 sys.path.remove(current_path)
 from git import Repo
 from git.exc import GitCommandError
+from git.remote import PushInfoList
 
 sys.path.insert(0, current_path)
 
@@ -71,7 +72,13 @@ class Git:
         return self.clone_repo(repo_name)
 
     def repo_clean_and_checkout(
-        self, repo_name: str, checkout_dest: str, auto_retry: bool = True
+        self,
+        repo_name: str,
+        checkout_dest: str,
+        *,
+        auto_retry: bool = True,
+        clean_git_lock: bool = False,
+        reset_target: str = "origin/master",
     ) -> str:
         repo_dir = os.path.join(self.repos_dir, repo_name)
         repo = self.get_repo(repo_name)
@@ -80,8 +87,21 @@ class Git:
         retry_interval = 2
         while retry_interval and auto_retry:
             try:
+                if clean_git_lock:
+                    lock_files = [
+                        "index.lock",
+                        "HEAD.lock",
+                        "fetch-pack.lock",
+                        "logs/HEAD.lock",
+                        "packed-refs.lock",
+                        "config.lock",
+                    ]
+                    for lock_file in lock_files:
+                        lock_path = os.path.join(repo_dir, ".git", lock_file)
+                        if os.path.exists(lock_path):
+                            os.remove(lock_path)
                 repo.git.fetch("--tags", "--all", "-f")
-                repo.git.reset("--hard", "origin/master")
+                repo.git.reset("--hard", reset_target)
                 repo.git.clean("-d", "-f", "-x")
                 repo.git.checkout(checkout_dest)
                 retry_interval = 0
@@ -117,6 +137,6 @@ class Git:
         if repo.is_dirty(untracked_files=True) or repo.index.diff(None):
             repo.index.commit(commit_message)
 
-    def push(self, repo_name: str) -> None:
+    def push(self, repo_name: str) -> PushInfoList:
         repo: Repo = self.get_repo(repo_name)
-        repo.remote(name="origin").push()
+        return repo.remote(name="origin").push()
